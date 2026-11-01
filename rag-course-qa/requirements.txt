@@ -1,0 +1,13 @@
+# 不锁定版本，让 pip 依据当前 Python 版本选择带预编译 wheel 的依赖
+# 生产环境建议用 pip freeze > requirements.lock.txt 固化版本
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+pydantic-settings
+httpx
+openai
+chromadb
+pypdf
+python-docx
+numpy

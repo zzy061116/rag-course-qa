@@ -1,0 +1,29 @@
+[
+  {
+    "doc_id": "dbb37217b19e",
+    "filename": "smoke_sample.txt",
+    "chunk_size": 256,
+    "chunk_overlap": 32,
+    "num_pages": 1,
+    "num_chunks": 2,
+    "created_at": 1793542495.2305317
+  },
+  {
+    "doc_id": "2dfdafde4588",
+    "filename": "tmp_demo.txt",
+    "chunk_size": 512,
+    "chunk_overlap": 64,
+    "num_pages": 1,
+    "num_chunks": 1,
+    "created_at": 1793542555.1631668
+  },
+  {
+    "doc_id": "2adbd490075e",
+    "filename": "tmp_demo.txt",
+    "chunk_size": 512,
+    "chunk_overlap": 64,
+    "num_pages": 1,
+    "num_chunks": 1,
+    "created_at": 1793542620.287447
+  }
+]

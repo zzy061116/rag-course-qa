@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>课程教材 RAG 知识库问答系统</title>
+<style>
+  :root {
+    --primary: #1a4f8b;
+    --primary-light: #eaf1f9;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --border: #e3e8ef;
+    --text: #1f2937;
+    --muted: #6b7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    background: var(--primary); color: #fff; padding: 12px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  header h1 { font-size: 16px; font-weight: 600; letter-spacing: .5px; }
+  #status { font-size: 12px; opacity: .9; }
+  .layout { flex: 1; display: flex; gap: 14px; padding: 14px; min-height: 0; }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .sidebar { width: 320px; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  h2 { font-size: 13px; color: var(--primary); margin-bottom: 8px; letter-spacing: .5px; }
+
+  #drop {
+    border: 2px dashed var(--border); border-radius: 10px; padding: 18px 10px; text-align: center;
+    color: var(--muted); font-size: 13px; cursor: pointer; transition: .2s;
+  }
+  #drop:hover, #drop.drag { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+  #drop input { display: none; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  #docs { list-style: none; font-size: 12px; }
+  #docs li {
+    padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  }
+  #docs .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #docs .meta { color: var(--muted); font-size: 11px; }
+  .del { color: #dc2626; cursor: pointer; font-size: 12px; border: none; background: none; }
+
+  #chat { flex: 1; overflow: auto; padding: 6px 4px; }
+  .msg { margin-bottom: 14px; display: flex; }
+  .msg.user { justify-content: flex-end; }
+  .bubble {
+    max-width: 78%; padding: 10px 14px; border-radius: 12px; line-height: 1.7;
+    font-size: 14px; white-space: pre-wrap; word-break: break-word;
+  }
+  .msg.user .bubble { background: var(--primary); color: #fff; }
+  .msg.bot .bubble { background: #fff; border: 1px solid var(--border); }
+  .cites { margin-top: 8px; border-top: 1px dashed var(--border); padding-top: 8px; font-size: 12px; color: var(--muted); }
+  .cite {
+    background: var(--primary-light); border-radius: 6px; padding: 6px 8px; margin-top: 6px; color: var(--text);
+  }
+  .cite b { color: var(--primary); }
+
+  .composer { display: flex; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+  textarea {
+    flex: 1; resize: none; height: 52px; padding: 10px; border-radius: 8px;
+    border: 1px solid var(--border); font-family: inherit; font-size: 14px; outline: none;
+  }
+  textarea:focus { border-color: var(--primary); }
+  button.send {
+    background: var(--primary); color: #fff; border: none; border-radius: 8px;
+    padding: 0 20px; cursor: pointer; font-size: 14px;
+  }
+  button.send:disabled { background: #9ca3af; cursor: not-allowed; }
+  .empty { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>课程教材 RAG 知识库问答系统</h1>
+  <span id="status">加载中…</span>
+</header>
+
+<div class="layout">
+  <aside class="panel sidebar">
+    <div>
+      <h2>文档上传</h2>
+      <div id="drop">
+        点击或拖拽 PDF / Word 到此处
+        <input type="file" id="file" accept=".pdf,.docx,.txt,.md" />
+      </div>
+      <div class="hint">上传后自动完成解析 → 分块 → 向量化 → 入库</div>
+    </div>
+    <div>
+      <h2>知识库文档</h2>
+      <ul id="docs"></ul>
+      <div class="hint" id="docEmpty">暂无文档，先上传一份教材试试</div>
+    </div>
+  </aside>
+
+  <section class="panel main">
+    <div id="chat"><div class="empty">上传文档后开始提问，回答会附带原文页码引用</div></div>
+    <div class="composer">
+      <textarea id="input" placeholder="例如：这份教材里梯度下降的收敛条件是什么？（Enter 发送，Shift+Enter 换行）"></textarea>
+      <button class="send" id="send">发送</button>
+    </div>
+  </section>
+</div>
+
+<script>
+const chatEl = document.getElementById('chat');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('send');
+const docsEl = document.getElementById('docs');
+const docEmpty = document.getElementById('docEmpty');
+const dropEl = document.getElementById('drop');
+const fileEl = document.getElementById('file');
+const statusEl = document.getElementById('status');
+let history = [];
+
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/health');
+    const d = await r.json();
+    statusEl.textContent = `LLM: ${d.llm.provider}/${d.llm.model}${d.llm.enabled ? '' : '(未配置)'} · Embedding: ${d.embedding.provider} · 片段数: ${d.chunks_in_store}`;
+  } catch (e) { statusEl.textContent = '后端未连接'; }
+}
+
+async function loadDocs() {
+  const r = await fetch('/api/documents');
+  const d = await r.json();
+  docsEl.innerHTML = '';
+  docEmpty.style.display = d.items.length ? 'none' : 'block';
+  d.items.forEach(doc => {
+    const li = document.createElement('li');
+    li.innerHTML = `<div><div class="name">${doc.filename}</div>
+      <div class="meta">${doc.num_pages} 页 · ${doc.num_chunks} 片段 · chunk=${doc.chunk_size}</div></div>`;
+    const btn = document.createElement('button');
+    btn.className = 'del'; btn.textContent = '删除';
+    btn.onclick = async () => {
+      await fetch(`/api/documents/${doc.doc_id}`, { method: 'DELETE' });
+      loadDocs(); loadStatus();
+    };
+    li.appendChild(btn);
+    docsEl.appendChild(li);
+  });
+}
+
+function addMsg(role) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg ' + role;
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  wrap.appendChild(bubble);
+  chatEl.appendChild(wrap);
+  chatEl.scrollTop = chatEl.scrollHeight;
+  return { wrap, bubble };
+}
+
+function renderCitations(bubble, citations) {
+  if (!citations || !citations.length) return;
+  const box = document.createElement('div');
+  box.className = 'cites';
+  box.innerHTML = '<div>引用来源：</div>';
+  citations.forEach(c => {
+    const div = document.createElement('div');
+    div.className = 'cite';
+    div.innerHTML = `<b>${c.source} · 第 ${c.page} 页</b>（相关度 ${c.score}）<br>${c.snippet}…`;
+    box.appendChild(div);
+  });
+  bubble.appendChild(box);
+}
+
+async function ask(question) {
+  const { bubble } = addMsg('bot');
+  bubble.textContent = '检索中…';
+  sendBtn.disabled = true;
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, history })
+  });
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '', answer = '', citations = [], done = false;
+
+  while (!done) {
+    const { value, done: streamDone } = await reader.read();
+    if (streamDone) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split('\n\n');
+    buffer = blocks.pop();
+    for (const block of blocks) {
+      const evMatch = block.match(/event: (.+)/);
+      const dataMatch = block.match(/data: ([\s\S]+)/);
+      if (!dataMatch) continue;
+      const payload = JSON.parse(dataMatch[1]);
+      const ev = evMatch ? evMatch[1].trim() : 'message';
+      if (ev === 'meta') {
+        citations = payload.citations;
+        bubble.textContent = '';
+      } else if (ev === 'delta') {
+        answer += payload.content;
+        bubble.textContent = answer;
+        chatEl.scrollTop = chatEl.scrollHeight;
+      } else if (ev === 'done') {
+        bubble.textContent = payload.answer;
+        renderCitations(bubble, payload.citations);
+        done = true;
+      } else if (ev === 'error') {
+        // 生成失败不中断，后续会降级返回检索到的原文
+        bubble.textContent = '生成失败：' + payload.message + '（正在返回检索原文…）';
+      }
+    }
+  }
+  history.push({ role: 'user', content: question }, { role: 'assistant', content: answer });
+  sendBtn.disabled = false;
+}
+
+function send() {
+  const q = inputEl.value.trim();
+  if (!q) return;
+  const { bubble } = addMsg('user');
+  bubble.textContent = q;
+  inputEl.value = '';
+  ask(q);
+}
+
+sendBtn.onclick = send;
+inputEl.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+dropEl.onclick = () => fileEl.click();
+dropEl.addEventListener('dragover', e => { e.preventDefault(); dropEl.classList.add('drag'); });
+dropEl.addEventListener('dragleave', () => dropEl.classList.remove('drag'));
+dropEl.addEventListener('drop', e => {
+  e.preventDefault(); dropEl.classList.remove('drag');
+  if (e.dataTransfer.files.length) upload(e.dataTransfer.files[0]);
+});
+fileEl.onchange = () => { if (fileEl.files.length) upload(fileEl.files[0]); };
+
+async function upload(file) {
+  const tip = addMsg('bot');
+  tip.bubble.textContent = `正在解析《${file.name}》并写入向量库…`;
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch('/api/documents', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || '上传失败');
+    tip.bubble.textContent = `《${d.filename}》入库完成：${d.num_pages} 页 → ${d.num_chunks} 个片段（chunk_size=${d.chunk_size}）`;
+  } catch (e) {
+    tip.bubble.textContent = '上传失败：' + e.message;
+  }
+  loadDocs(); loadStatus();
+}
+
+loadStatus(); loadDocs();
+</script>
+</body>
+</html>

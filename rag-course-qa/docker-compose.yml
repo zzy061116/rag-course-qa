@@ -1,0 +1,16 @@
+services:
+  rag:
+    build: .
+    image: course-rag:latest
+    container_name: course-rag
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # 容器内路径必须写绝对路径，保证数据落在挂载卷里
+      CHROMA_DIR: /app/data/chroma
+      UPLOAD_DIR: /app/data/uploads
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

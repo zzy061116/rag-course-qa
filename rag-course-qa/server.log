@@ -1,0 +1,4 @@
+INFO:     127.0.0.1:64085 - "POST /api/documents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64086 - "GET /api/documents HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64088 - "POST /api/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64090 - "POST /api/chat/sync HTTP/1.1" 200 OK
